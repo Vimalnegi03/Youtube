@@ -190,7 +190,7 @@ export const changeCurrentPassword=asyncHandler(async(req,res)=>{
 })
 
 export const getCurrentUser=asyncHandler(async(req,res)=>{ 
-    return res.status(200).json(200,req.user,"current user fetched successfully")
+    return res.status(200).json(new ApiResponse(200,req.user,"current user fetched successfully"))
 })
 
 export const updateAccountDetails=asyncHandler(async(req,res)=>{
@@ -199,7 +199,7 @@ export const updateAccountDetails=asyncHandler(async(req,res)=>{
     {
         throw new ApiError(400,"Please fill all fields")
     }
-   const user= User.findByIdAndUpdate(req.user?._id,{
+   const user= await User.findByIdAndUpdate(req.user?._id,{
         $set:{
             fullName,
             email,
@@ -252,4 +252,68 @@ export const updateUserCoverImage=asyncHandler(async(req,res)=>{
       return res.status(200).json(new ApiResponse(200,user,"coverImage successfully updated"))
   })
 
-  
+
+export const getUserChannelProfile=asyncHandler(async(req,res)=>{
+    const {username}=req.params
+    if(!username?.trim())
+    {
+        throw new ApiError(400,"username is missing")
+    }
+ const channel=  await User.aggregate([{
+    $match:{
+        username:username?.toLowerCase(),
+    }
+
+    },{
+        $lookup:{
+            from:"subscriptions",//as everything in model is converted into lower case in models
+            localField:"_id",
+            foreignField:"channel",
+            as:"subscribers"
+        }
+    },{
+        $lookup:{
+            from:"subscriptions",//as everything in model is converted into lower case in models
+            localField:"_id",
+            foreignField:"subscriber",
+            as:"subscribedTo"
+        }
+        
+    },{
+        $addFields:{
+            subscribersCount:{
+                $size:"$subscribers"
+            },
+            channelsSubscribedToCount:{
+                $size:"$subscribedTo"
+            },
+            isSubscribed:{
+                $cond:{
+                    if:{
+                        $in:[req.user?._id,"$subscribers.subscriber",]
+                    },
+                    then:true,
+                    else:false
+                }
+            }
+        }
+    },{
+        $project:{//to select tthe specific value,,... all those field that we want to show should have value 1
+        fullName:1,
+        username:1,
+        subscribersCount:1,
+        channelsSubscribedToCount:1,
+        isSubscribed:1,
+        avatar:1,
+        coverImage:1,
+        email:1,
+
+        }
+    }])//every object over here denotes a pipeline
+    
+    if(!channel?.length)
+    {
+    throw new ApiError(404,"channel does not exist")
+    }
+    return res.status(200).json(new ApiResponse(200,channel[0],"user channel fetched successfully"))
+})
